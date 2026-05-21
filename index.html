@@ -1636,6 +1636,8 @@ body::after {
 
 </style>
 </head>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://unpkg.com/@formspree/ajax@1" defer></script>
 <body>
 <!-- Script de emergencia: se ejecuta ANTES de cualquier onclick -->
@@ -2308,6 +2310,76 @@ var obSelectedTags = [];
 var obCurrentStep = 0;
 var detectingLoc = false;
 var obCatFilter = 'all';
+var _gifPickerOpen = false;
+
+// ── FIREBASE CONFIG ──
+var _fbApp = null;
+var _fbDb  = null;
+var _fbChatListener = null;
+var MY_UID = null;
+
+function fbInit() {
+  try {
+    var firebaseConfig = {
+      apiKey:            "AIzaSyDExkL1kAgnzWvScg4IsmjLw75FmvOPEhM",
+      authDomain:        "afinity-20ae3.firebaseapp.com",
+      databaseURL:       "https://afinity-20ae3-default-rtdb.firebaseio.com",
+      projectId:         "afinity-20ae3",
+      storageBucket:     "afinity-20ae3.firebasestorage.app",
+      messagingSenderId: "289776069240",
+      appId:             "1:289776069240:web:b447220b42c7123d355b8d"
+    };
+    if (!firebase.apps.length) {
+      _fbApp = firebase.initializeApp(firebaseConfig);
+    } else {
+      _fbApp = firebase.app();
+    }
+    _fbDb = firebase.database();
+  } catch(e) {}
+}
+
+function fbGetUserId() {
+  var uid = localStorage.getItem('afinity_uid');
+  if (!uid) {
+    uid = 'u_' + Math.random().toString(36).substr(2,9) + '_' + Date.now();
+    localStorage.setItem('afinity_uid', uid);
+  }
+  return uid;
+}
+
+function fbListenChat(chatId) {
+  if (!_fbDb) return;
+  fbStopListening();
+  var ref = _fbDb.ref('chats/' + chatId + '/messages');
+  _fbChatListener = ref;
+  ref.on('value', function(snapshot) {
+    var data = snapshot.val();
+    if (data) {
+      var msgs = Object.values(data).sort(function(a,b){ return a.ts - b.ts; });
+      chatHistory[chatId] = msgs;
+    } else {
+      // No Firebase messages yet — seed with local demo messages
+      var chat = INITIAL_CHATS.find(function(c){ return c.id === chatId; });
+      if (chat && chat.msgs && chat.msgs.length && !chatHistory[chatId]) {
+        chatHistory[chatId] = chat.msgs;
+        // Write demo messages to Firebase so other devices see them too
+        chat.msgs.forEach(function(m){
+          _fbDb.ref('chats/' + chatId + '/messages/' + m.id).set(m);
+        });
+      }
+    }
+    if (activeChatId === chatId) renderMessages();
+  });
+}
+
+function fbStopListening() {
+  if (_fbChatListener) { _fbChatListener.off(); _fbChatListener = null; }
+}
+
+function fbSendMessage(chatId, msg) {
+  if (!_fbDb) return;
+  _fbDb.ref('chats/' + chatId + '/messages/' + msg.id).set(msg);
+}
 
 var HASH_CATEGORIES = {
   '🎵 Música':['rock','metal','indie','jazz','folklore','electrónica','trap','k-pop','piano','guitarra','batería','dj','producción musical','vinilo'],
@@ -3473,6 +3545,7 @@ function openChat(chatId) {
   renderMessages();
   document.getElementById('chat-window').classList.remove('hidden');
   maybeShowTip('tip-chat');
+  fbListenChat(chatId);
 
   // Show join bar for groups
   if (chat.type === 'group' && !unlockedGroups[chat.id.replace('chat-','')]) {
@@ -3511,6 +3584,7 @@ function openDM(userId) {
 }
 
 function closeChatWindow() {
+  fbStopListening();
   document.getElementById('chat-window').classList.add('hidden');
   activeChatId = null;
   replyingTo = null;
@@ -3548,7 +3622,7 @@ function appendMessageEl(msg, container, chat) {
     return;
   }
 
-  var isMe = msg.sender === 'me';
+  var isMe = msg.sender === 'me' || msg.sender === MY_UID;
   var u = isMe ? null : NETWORK.find(function(u){ return u.id === msg.sender; });
 
   var wrap = document.createElement('div');
@@ -3782,13 +3856,14 @@ function sendMessage() {
   if (!chat) return;
 
   var msgId = 'm'+Date.now();
-  var msg = { id:msgId, sender:'me', text:text, ts:Date.now() };
+  var msg = { id:msgId, sender: MY_UID || 'me', text:text, ts:Date.now() };
   if (replyingTo) { msg.replyTo = replyingTo.id; replyingTo = null; input.placeholder = 'Escribí algo...'; }
 
   if (!chatHistory[activeChatId]) chatHistory[activeChatId] = [...chat.msgs];
   chatHistory[activeChatId].push(msg);
   saveToStorage();
   earnSparks('msg-'+msgId, 2);
+  fbSendMessage(activeChatId, msg);
   renderMessages();
   input.value = '';
   autoResizeInput(input);
