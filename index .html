@@ -566,7 +566,16 @@ body::after {
 .msg-wrap.mine { align-items:flex-end; }
 .msg-wrap.theirs { align-items:flex-start; }
 
-.msg-sender { font-size:11px; color:var(--text3); margin-bottom:2px; font-weight:600; }
+.msg-sender {
+  font-size:11px; font-weight:700; margin-bottom:3px;
+  padding-left:2px; letter-spacing:.02em;
+  display:flex; align-items:center; gap:5px;
+}
+.msg-sender::before {
+  content:''; display:inline-block;
+  width:5px; height:5px; border-radius:50%;
+  background:currentColor; opacity:.7; flex-shrink:0;
+}
 .msg-bubble {
   max-width:75%; padding:9px 13px; border-radius:18px;
   font-size:14px; line-height:1.45; cursor:pointer; position:relative;
@@ -3681,8 +3690,18 @@ function appendMessageEl(msg, container, chat) {
   wrap.dataset.msgId = msg.id;
 
   var senderHtml = '';
-  if (!isMe && chat.type === 'group' && u) {
-    senderHtml = '<div class="msg-sender" style="color:'+u.color+'">'+u.name+'</div>';
+  if (!isMe && chat.type === 'group') {
+    var senderName, senderColor;
+    if (u) {
+      senderName = u.name;
+      senderColor = u.color;
+    } else {
+      // Usuario real de Firebase — mostrar UID corto como nombre
+      var shortId = msg.sender ? msg.sender.replace('u_','').substring(0,6) : '?';
+      senderName = 'Usuario ' + shortId;
+      senderColor = '#9b7dff';
+    }
+    senderHtml = '<div class="msg-sender" style="color:'+senderColor+'">'+senderName+'</div>';
   }
 
   var quoteHtml = '';
@@ -3715,7 +3734,7 @@ function appendMessageEl(msg, container, chat) {
       + '</div>'
       + '</div>';
   } else if (msg.gifUrl) {
-    contentHtml = quoteHtml + '<img class="gif-msg" src="'+msg.gifUrl+'" alt="GIF" style="border-radius:14px;display:block;max-width:220px;width:100%">';
+    contentHtml = quoteHtml + '<img class="gif-msg" src="'+msg.gifUrl+'" alt="GIF" referrerpolicy="no-referrer" style="border-radius:14px;display:block;max-width:220px;width:100%">';
     // Remove bubble background for GIFs
     setTimeout(function(){
       var bubbles = document.querySelectorAll('.msg-bubble');
@@ -4957,10 +4976,11 @@ function sendGifMessage(url){
   if (!chat) return;
 
   var msg = {
-    id:'gif'+Date.now(),
-    sender:'me',
-    gifUrl:url,
-    ts:Date.now()
+    id: 'gif' + Date.now(),
+    sender: MY_UID || 'me',
+    gifUrl: url,
+    text: '🎞️ GIF',
+    ts: Date.now()
   };
 
   if (!chatHistory[activeChatId]) {
@@ -4968,15 +4988,17 @@ function sendGifMessage(url){
   }
 
   chatHistory[activeChatId].push(msg);
+  chat.preview = '🎞️ GIF';
+
+  // Enviar a Firebase
+  fbSendMessage(activeChatId, msg);
 
   saveToStorage();
   renderMessages();
   closeGifPicker();
 
   var container = document.getElementById('chat-messages');
-  if(container) {
-    container.scrollTop = container.scrollHeight;
-  }
+  if(container) container.scrollTop = container.scrollHeight;
 }
 
 </script>
