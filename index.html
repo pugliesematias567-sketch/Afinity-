@@ -15,9 +15,10 @@
 <link rel="apple-touch-startup-image" href="icons/splash-2048.png">
 <meta name="msapplication-TileColor" content="#0a0a0f">
 <script>
+// Desregistrar service workers viejos que bloquean actualizaciones
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('sw.js').catch(function() {});
+  navigator.serviceWorker.getRegistrations().then(function(regs) {
+    regs.forEach(function(reg) { reg.unregister(); });
   });
 }
 </script>
@@ -1638,6 +1639,33 @@ body::after {
 </head>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+// Init Firebase inmediatamente después de cargar los SDKs
+(function() {
+  var config = {
+    apiKey:            "AIzaSyDExkL1kAgnzWvScg4IsmjLw75FmvOPEhM",
+    authDomain:        "afinity-20ae3.firebaseapp.com",
+    databaseURL:       "https://afinity-20ae3-default-rtdb.firebaseio.com",
+    projectId:         "afinity-20ae3",
+    storageBucket:     "afinity-20ae3.firebasestorage.app",
+    messagingSenderId: "289776069240",
+    appId:             "1:289776069240:web:b447220b42c7123d355b8d"
+  };
+  try {
+    var app = firebase.apps.length ? firebase.app() : firebase.initializeApp(config);
+    window._fbDb = firebase.database(app);
+    window._fbApp = app;
+    window.MY_UID = localStorage.getItem('afinity_uid') || (function(){
+      var uid = 'u_' + Math.random().toString(36).substr(2,9) + '_' + Date.now();
+      localStorage.setItem('afinity_uid', uid);
+      return uid;
+    })();
+    console.log('Firebase OK:', window._fbDb ? 'conectado' : 'fallo');
+  } catch(e) {
+    console.error('Firebase init error:', e);
+  }
+})();
+</script>
 <script src="https://unpkg.com/@formspree/ajax@1" defer></script>
 <body>
 <!-- Script de emergencia: se ejecuta ANTES de cualquier onclick -->
@@ -2319,23 +2347,26 @@ var _fbChatListener = null;
 var MY_UID = null;
 
 function fbInit() {
-  try {
-    var firebaseConfig = {
-      apiKey:            "AIzaSyDExkL1kAgnzWvScg4IsmjLw75FmvOPEhM",
-      authDomain:        "afinity-20ae3.firebaseapp.com",
-      databaseURL:       "https://afinity-20ae3-default-rtdb.firebaseio.com",
-      projectId:         "afinity-20ae3",
-      storageBucket:     "afinity-20ae3.firebasestorage.app",
-      messagingSenderId: "289776069240",
-      appId:             "1:289776069240:web:b447220b42c7123d355b8d"
-    };
-    if (!firebase.apps.length) {
-      _fbApp = firebase.initializeApp(firebaseConfig);
-    } else {
-      _fbApp = firebase.app();
-    }
-    _fbDb = firebase.database();
-  } catch(e) {}
+  var firebaseConfig = {
+    apiKey:            "AIzaSyDExkL1kAgnzWvScg4IsmjLw75FmvOPEhM",
+    authDomain:        "afinity-20ae3.firebaseapp.com",
+    databaseURL:       "https://afinity-20ae3-default-rtdb.firebaseio.com",
+    projectId:         "afinity-20ae3",
+    storageBucket:     "afinity-20ae3.firebasestorage.app",
+    messagingSenderId: "289776069240",
+    appId:             "1:289776069240:web:b447220b42c7123d355b8d"
+  };
+  if (!firebase.apps.length) {
+    _fbApp = firebase.initializeApp(firebaseConfig);
+  } else {
+    _fbApp = firebase.app();
+  }
+  _fbDb = firebase.database(_fbApp);
+  console.log("Firebase conectado:", _fbDb);
+  _fbDb.ref('.info/connected').on('value', function(snap) {
+    window._fbConnected = snap.val();
+    console.log("FB connected:", snap.val());
+  });
 }
 
 function fbGetUserId() {
@@ -4732,6 +4763,27 @@ window.addEventListener('load', _boot);
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   setTimeout(_boot, 0);
 }
+
+// Firebase — init inmediato y robusto
+(function initFirebaseNow() {
+  var attempts = 0;
+  function tryFbInit() {
+    attempts++;
+    if (typeof firebase === 'undefined' || typeof firebase.database === 'undefined') {
+      if (attempts < 30) setTimeout(tryFbInit, 200);
+      return;
+    }
+    if (_fbDb) return; // ya inicializado
+    fbInit();
+    MY_UID = fbGetUserId();
+  }
+  // Intentar inmediatamente
+  tryFbInit();
+  // Y también cuando cargue la página por si acaso
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', tryFbInit);
+  }
+})();
 
 // ══════════════════════════════════════════════
 // CAJÓN DE SUGERENCIAS — Formspree Ajax
