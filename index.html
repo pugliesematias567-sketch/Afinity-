@@ -1637,12 +1637,10 @@ body::after {
 
 </style>
 </head>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script>
-// Init Firebase inmediatamente después de cargar los SDKs
+// Cargar Firebase dinámicamente y luego inicializar
 (function() {
-  var config = {
+  var FB_CONFIG = {
     apiKey:            "AIzaSyDExkL1kAgnzWvScg4IsmjLw75FmvOPEhM",
     authDomain:        "afinity-20ae3.firebaseapp.com",
     databaseURL:       "https://afinity-20ae3-default-rtdb.firebaseio.com",
@@ -1651,19 +1649,41 @@ body::after {
     messagingSenderId: "289776069240",
     appId:             "1:289776069240:web:b447220b42c7123d355b8d"
   };
-  try {
-    var app = firebase.apps.length ? firebase.app() : firebase.initializeApp(config);
-    window._fbDb = firebase.database(app);
-    window._fbApp = app;
-    window.MY_UID = localStorage.getItem('afinity_uid') || (function(){
-      var uid = 'u_' + Math.random().toString(36).substr(2,9) + '_' + Date.now();
-      localStorage.setItem('afinity_uid', uid);
-      return uid;
-    })();
-    console.log('Firebase OK:', window._fbDb ? 'conectado' : 'fallo');
-  } catch(e) {
-    console.error('Firebase init error:', e);
+
+  function initFbNow() {
+    try {
+      var app = (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length)
+        ? firebase.app()
+        : firebase.initializeApp(FB_CONFIG);
+      window._fbApp = app;
+      window._fbDb  = firebase.database(app);
+      window.MY_UID = localStorage.getItem('afinity_uid') || (function(){
+        var uid = 'u_' + Math.random().toString(36).substr(2,9) + '_' + Date.now();
+        localStorage.setItem('afinity_uid', uid);
+        return uid;
+      })();
+      console.log('Firebase listo:', !!window._fbDb);
+      // Notificar al resto de la app
+      document.dispatchEvent(new Event('fb-ready'));
+    } catch(e) {
+      console.error('Firebase error:', e);
+    }
   }
+
+  function loadScript(src, cb) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.onload = cb;
+    s.onerror = function(){ console.error('No se pudo cargar:', src); };
+    document.head.appendChild(s);
+  }
+
+  // Cargar app SDK, luego database SDK, luego inicializar
+  loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js', function() {
+    loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js', function() {
+      initFbNow();
+    });
+  });
 })();
 </script>
 <script src="https://unpkg.com/@formspree/ajax@1" defer></script>
@@ -3661,8 +3681,10 @@ function appendMessageEl(msg, container, chat) {
   wrap.dataset.msgId = msg.id;
 
   var senderHtml = '';
-  if (!isMe && chat.type === 'group' && u) {
-    senderHtml = '<div class="msg-sender" style="color:'+u.color+'">'+u.name+'</div>';
+  if (!isMe && chat.type === 'group') {
+    var senderName = u ? u.name : (msg.sender && msg.sender.length > 8 ? 'Usuario' : msg.sender);
+    var senderColor = u ? u.color : '#9b7dff';
+    senderHtml = '<div class="msg-sender" style="color:'+senderColor+'">'+senderName+'</div>';
   }
 
   var quoteHtml = '';
@@ -3695,7 +3717,7 @@ function appendMessageEl(msg, container, chat) {
       + '</div>'
       + '</div>';
   } else if (msg.gifUrl) {
-    contentHtml = quoteHtml + '<img class="gif-msg" src="'+msg.gifUrl+'" alt="GIF" style="border-radius:14px;display:block;max-width:220px;width:100%">';
+    contentHtml = quoteHtml + '<img class="gif-msg" src="'+msg.gifUrl+'" alt="GIF" referrerpolicy="no-referrer" style="border-radius:14px;display:block;max-width:220px;width:100%">';
     // Remove bubble background for GIFs
     setTimeout(function(){
       var bubbles = document.querySelectorAll('.msg-bubble');
@@ -4937,10 +4959,11 @@ function sendGifMessage(url){
   if (!chat) return;
 
   var msg = {
-    id:'gif'+Date.now(),
-    sender:'me',
-    gifUrl:url,
-    ts:Date.now()
+    id: 'gif' + Date.now(),
+    sender: MY_UID || 'me',
+    gifUrl: url,
+    text: '🎞️ GIF',
+    ts: Date.now()
   };
 
   if (!chatHistory[activeChatId]) {
@@ -4948,15 +4971,17 @@ function sendGifMessage(url){
   }
 
   chatHistory[activeChatId].push(msg);
+  chat.preview = '🎞️ GIF';
+
+  // Enviar a Firebase
+  fbSendMessage(activeChatId, msg);
 
   saveToStorage();
   renderMessages();
   closeGifPicker();
 
   var container = document.getElementById('chat-messages');
-  if(container) {
-    container.scrollTop = container.scrollHeight;
-  }
+  if(container) container.scrollTop = container.scrollHeight;
 }
 
 </script>
