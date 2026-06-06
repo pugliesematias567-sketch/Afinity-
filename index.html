@@ -4667,7 +4667,8 @@ function editDisplayName() {
   showToast('✓ Nombre actualizado');
 }
 window.editDisplayName = editDisplayName;
-  var overlay = document.getElementById('edit-city-overlay');
+
+function editCity() {
   var inputEl = document.getElementById('edit-city-input');
   overlay.style.display = 'flex';
   if (inputEl) {
