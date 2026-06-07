@@ -1066,6 +1066,39 @@ body::after {
 .notif-sub { font-size:11px; color:var(--text3); }
 .notif-arrow { color:var(--text3); font-size:14px; align-self:center; }
 
+/* ─── SWIPE TO DELETE ─── */
+.swipe-wrap {
+  position:relative; overflow:hidden;
+  border-radius:var(--radius2); margin-bottom:8px;
+}
+.swipe-wrap.notif-wrap { border-radius:var(--radius3); margin-bottom:6px; }
+.swipe-delete-bg {
+  position:absolute; inset:0;
+  background:linear-gradient(90deg, transparent 40%, #dc2626 100%);
+  display:flex; align-items:center; justify-content:flex-end;
+  padding-right:18px; border-radius:inherit;
+  opacity:0; transition:opacity .15s;
+  pointer-events:none;
+}
+.swipe-delete-bg .del-icon { font-size:20px; color:#fff; }
+.swipe-inner {
+  position:relative; z-index:1;
+  transition:transform .25s cubic-bezier(.4,0,.2,1);
+  border-radius:inherit;
+}
+.swipe-wrap .chat-item,
+.swipe-wrap .notif-item { margin-bottom:0; border-radius:inherit; }
+.swipe-wrap.swiping .swipe-delete-bg { opacity:1; }
+.swipe-wrap.deleting .swipe-inner {
+  transform:translateX(-100%) !important;
+  transition:transform .22s cubic-bezier(.4,0,.2,1);
+}
+.swipe-wrap.deleting {
+  max-height:0 !important; overflow:hidden; margin-bottom:0 !important;
+  transition:max-height .28s ease .2s, margin-bottom .28s ease .2s, opacity .18s ease;
+  opacity:0;
+}
+
 /* ─── ONBOARDING ─── */
 #onboarding {
   position:fixed; inset:0; z-index:300; background:var(--bg);
@@ -2128,21 +2161,6 @@ window.upOpenDM          = _stub('upOpenDM');
           <div class="donation-btn" onclick="showToast('🚀 ¡Sos un genio! Gracias por el apoyo')">🚀 $3000</div>
         </div>
       </div>
-      <div class="profile-section" style="padding-bottom:32px">
-        <div class="profile-section-title">Modo demo</div>
-        <button onclick="resetApp()" style="
-          width:100%; padding:13px; border-radius:14px;
-          border:1.5px dashed rgba(239,68,68,.4);
-          background:rgba(239,68,68,.06);
-          color:#f87171; font-size:14px; font-weight:700;
-          cursor:pointer; display:flex; align-items:center;
-          justify-content:center; gap:8px; font-family:inherit;
-          transition:all .2s;
-        " onmouseover="this.style.background='rgba(239,68,68,.14)'"
-           onmouseout="this.style.background='rgba(239,68,68,.06)'">
-          🔄 Reiniciar app desde cero
-        </button>
-      </div>
     </div>
   </div>
 
@@ -2881,11 +2899,11 @@ function renderHashChips() {
   var search = document.getElementById('hash-search-input').value.toLowerCase().trim();
   var all = [];
   if (obCatFilter === 'all') {
-    Object.values(HASH_CATEGORIES).forEach(function(tags){ tags.forEach(function(t){ if (!all.includes(t)) all.push(t); }); });
+    Object.values(HASH_CATEGORIES).forEach(function(tags){ tags.forEach(function(t){ if (all.indexOf(t) < 0) all.push(t); }); });
   } else {
     all = HASH_CATEGORIES[obCatFilter] || [];
   }
-  if (search) all = all.filter(function(t){ return t.toLowerCase().includes(search); });
+  if (search) all = all.filter(function(t){ return (t.toLowerCase().indexOf(search) >= 0); });
   container.innerHTML = '';
 
   // ── PREVISUALIZACIÓN CREAR HASHTAG ──
@@ -2893,8 +2911,8 @@ function renderHashChips() {
   var existing = [];
   Object.values(HASH_CATEGORIES).forEach(function(tags){ tags.forEach(function(t){ existing.push(t.toLowerCase()); }); });
   var searchNorm = search.replace(/^#+/, '');
-  if (searchNorm && !existing.includes(searchNorm)) {
-    var alreadySelected = obSelectedTags.includes(searchNorm);
+  if (searchNorm && existing.indexOf(searchNorm) < 0) {
+    var alreadySelected = (obSelectedTags.indexOf(searchNorm) >= 0);
     var preview = document.createElement('div');
     preview.className = 'hash-create-preview';
     preview.innerHTML = '<span class="hash-create-icon">✨</span>'
@@ -2906,7 +2924,7 @@ function renderHashChips() {
       + (alreadySelected ? '✓ Agregado' : '+ Agregar')
       + '</button>';
     preview.addEventListener('click', function() {
-      if (!obSelectedTags.includes(searchNorm)) {
+      if (!(obSelectedTags.indexOf(searchNorm) >= 0)) {
         obSelectedTags.push(searchNorm);
         document.getElementById('hash-search-input').value = '';
         renderHashChips();
@@ -2920,7 +2938,7 @@ function renderHashChips() {
 
   all.forEach(function(tag){
     var chip = document.createElement('div');
-    chip.className = 'hash-chip' + (obSelectedTags.includes(tag) ? ' selected' : '');
+    chip.className = 'hash-chip' + (obSelectedTags.indexOf(tag) >= 0 ? ' selected' : '');
     chip.textContent = '#' + tag;
     chip.onclick = function(){ toggleHashChip(tag, chip); };
     container.appendChild(chip);
@@ -3423,7 +3441,7 @@ function renderLocalSection() {
   var userCityKey = myCity ? myCity.toLowerCase() : '';
   var localGroups = LOCAL_GROUPS.filter(function(lg){
     if (!myCity) return false;
-    return userCityKey.includes(lg.city.toLowerCase()) || lg.city.toLowerCase().includes(userCityKey.split(',')[0].toLowerCase());
+    return (userCityKey.indexOf(lg.city.toLowerCase()) >= 0) || (lg.city.toLowerCase().indexOf(userCityKey.split(',')[0].toLowerCase()) >= 0);
   });
   if (!localGroups.length) localGroups = LOCAL_GROUPS.slice(0, 6);
 
@@ -3577,9 +3595,9 @@ function renderPersonsList() {
 
 function buildPersonCard(u, grp) {
   var aff = calcAffinity(u.tags, u.city);
-  var sameCity = myCity && u.city.toLowerCase().includes(myCity.split(',')[0].toLowerCase());
+  var sameCity = myCity && (u.city.toLowerCase().indexOf(myCity.split(',')[0].toLowerCase()) >= 0);
   var myTags = Object.keys(myHashtags);
-  var sharedTags = u.tags.filter(function(t){ return myTags.includes(t); });
+  var sharedTags = u.tags.filter(function(t){ return myTags.indexOf(t) >= 0; });
   var isNew = u.id === 'u1'; // demo
 
   // Affinity circle class
@@ -3619,7 +3637,7 @@ function openCompareModal(u) {
   _upCurrentUser = u;  // también para el modal de perfil completo
   var aff = calcAffinity(u.tags, u.city);
   var myTags = Object.keys(myHashtags);
-  var sharedTags = u.tags.filter(function(t){ return myTags.includes(t); });
+  var sharedTags = u.tags.filter(function(t){ return myTags.indexOf(t) >= 0; });
   var meta = USER_META[u.id] || { username:'@'+u.id, bio:'', emoji:'😊' };
 
   // Fill modal
@@ -3661,6 +3679,57 @@ function closeCompareModal(e) {
 // CHAT LIST
 // ══════════════════════════════════════════════
 
+// ══════════════════════════════════════════════
+// SWIPE TO DELETE — utility compartida
+// Detecta swipe izquierdo touch/mouse y ejecuta onDelete()
+// ══════════════════════════════════════════════
+function attachSwipeToDelete(wrap, onDelete) {
+  var startX = 0, startY = 0, curX = 0, dragging = false, locked = false;
+  var inner = wrap.querySelector('.swipe-inner');
+  var THRESHOLD = 80; // px para confirmar borrado
+
+  function onStart(x, y) {
+    if (locked) return;
+    startX = x; startY = y; curX = 0; dragging = true;
+  }
+  function onMove(x, y) {
+    if (!dragging || locked) return;
+    var dx = x - startX;
+    var dy = y - startY;
+    // Cancelar si el movimiento es más vertical que horizontal
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dx) < 10) { dragging = false; return; }
+    if (dx > 0) { inner.style.transform = ''; wrap.classList.remove('swiping'); return; }
+    curX = dx;
+    inner.style.transform = 'translateX(' + Math.max(dx, -140) + 'px)';
+    if (Math.abs(dx) > 20) wrap.classList.add('swiping');
+  }
+  function onEnd() {
+    if (!dragging || locked) return;
+    dragging = false;
+    if (curX < -THRESHOLD) {
+      locked = true;
+      wrap.classList.add('deleting');
+      wrap.style.maxHeight = wrap.offsetHeight + 'px';
+      // Force reflow so transition fires
+      void wrap.offsetHeight;
+      setTimeout(function(){ onDelete(); }, 480);
+    } else {
+      inner.style.transform = '';
+      wrap.classList.remove('swiping');
+    }
+  }
+
+  // Touch
+  wrap.addEventListener('touchstart', function(e){ var t=e.touches[0]; onStart(t.clientX, t.clientY); }, {passive:true});
+  wrap.addEventListener('touchmove',  function(e){ var t=e.touches[0]; onMove(t.clientX, t.clientY); }, {passive:true});
+  wrap.addEventListener('touchend',   function(){ onEnd(); });
+  // Mouse (desktop fallback)
+  wrap.addEventListener('mousedown',  function(e){ onStart(e.clientX, e.clientY); });
+  wrap.addEventListener('mousemove',  function(e){ if(e.buttons) onMove(e.clientX, e.clientY); });
+  wrap.addEventListener('mouseup',    function(){ onEnd(); });
+  wrap.addEventListener('mouseleave', function(){ if(dragging) onEnd(); });
+}
+
 function renderChatList() {
   var list = document.getElementById('chat-list');
   list.innerHTML = '';
@@ -3688,7 +3757,29 @@ function renderChatList() {
       + '<div class="chat-info"><div class="chat-name">'+s(chat.name)+'</div><div class="chat-preview">'+s(preview)+'</div></div>'
       + '<div class="chat-meta"><div class="chat-time">'+s(chat.time)+'</div>'+badgeHtml+'</div>';
 
-    list.appendChild(item);
+    // Wrap in swipe-to-delete container
+    var wrap = document.createElement('div');
+    wrap.className = 'swipe-wrap';
+
+    var bg = document.createElement('div');
+    bg.className = 'swipe-delete-bg';
+    bg.innerHTML = '<span class="del-icon">🗑️</span>';
+
+    var inner = document.createElement('div');
+    inner.className = 'swipe-inner';
+    inner.appendChild(item);
+
+    wrap.appendChild(bg);
+    wrap.appendChild(inner);
+
+    attachSwipeToDelete(wrap, function() {
+      var idx = INITIAL_CHATS.indexOf(chat);
+      if (idx >= 0) INITIAL_CHATS.splice(idx, 1);
+      renderChatList();
+      showToast('Chat eliminado');
+    });
+
+    list.appendChild(wrap);
   });
 
   updateChatBadge();
@@ -4122,7 +4213,7 @@ function sendIcebreaker() {
   var chatTags = [];
   if (chat.userId) {
     var u = NETWORK.find(function(n){ return n.id === chat.userId; });
-    if (u) chatTags = u.tags.filter(function(t){ return Object.keys(myHashtags).includes(t); });
+    if (u) chatTags = u.tags.filter(function(t){ return Object.keys(myHashtags).indexOf(t) >= 0; });
   } else if (chat.type === 'group') {
     // Use group tags from CURATED_GROUPS or LOCAL_GROUPS
     var gdata = CURATED_GROUPS.find(function(g){ return g.chatId === activeChatId; })
@@ -4133,7 +4224,7 @@ function sendIcebreaker() {
   var bestCat = null;
   var bestMatch = 0;
   Object.values(TEMAS_DB).forEach(function(cat){
-    var match = cat.tags.filter(function(t){ return chatTags.includes(t); }).length;
+    var match = cat.tags.filter(function(t){ return chatTags.indexOf(t) >= 0; }).length;
     if (match > bestMatch) { bestMatch = match; bestCat = cat; }
   });
   if (!bestCat) bestCat = TEMAS_DB.misc;
@@ -4256,7 +4347,7 @@ function confirmEvent() {
       setTimeout(function(){
         var u = NETWORK.find(function(n){ return n.id === uid; });
         if (u && _afinityEvents[evId]) {
-          if (!_afinityEvents[evId].attendees.includes(u.name)) {
+          if (_afinityEvents[evId].attendees.indexOf(u.name) < 0) {
             _afinityEvents[evId].attendees.push(u.name);
             var joinMsg = { id:'m'+Date.now(), sender:'system', text:u.name+' se anotó al evento '+et.icon, ts:Date.now() };
             chatHistory[activeChatId].push(joinMsg);
@@ -4296,7 +4387,7 @@ function rsvpEvent(evId, answer, btn) {
 
   // Update attendees list
   var myName = 'Vos';
-  if (answer === 'yes' && !ev.attendees.includes(myName)) {
+  if (answer === 'yes' && ev.attendees.indexOf(myName) < 0) {
     ev.attendees.push(myName);
   } else if (answer === 'no') {
     ev.attendees = ev.attendees.filter(function(a){ return a !== myName; });
@@ -4587,7 +4678,7 @@ function renderAddHashChips(search) {
   // ── PREVISUALIZACIÓN CREAR HASHTAG ──
   var existingAll = [];
   Object.values(HASH_CATEGORIES).forEach(function(tags){ tags.forEach(function(t){ existingAll.push(t.toLowerCase()); }); });
-  if (searchNorm && !existingAll.includes(searchNorm) && !myHashtags[searchNorm]) {
+  if (searchNorm && existingAll.indexOf(searchNorm) < 0 && !myHashtags[searchNorm]) {
     var alreadySel = _addHashSelected.indexOf(searchNorm) >= 0;
     var preview = document.createElement('div');
     preview.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:10px;'
@@ -4741,7 +4832,30 @@ function renderNotifDrawer() {
         if (a.chatId) setTimeout(function(){ openChat(a.chatId); }, 100);
       };
     }
-    list.appendChild(item);
+
+    // Wrap in swipe-to-delete container
+    var wrap = document.createElement('div');
+    wrap.className = 'swipe-wrap notif-wrap';
+
+    var bg = document.createElement('div');
+    bg.className = 'swipe-delete-bg';
+    bg.innerHTML = '<span class="del-icon">🗑️</span>';
+
+    var inner = document.createElement('div');
+    inner.className = 'swipe-inner';
+    inner.appendChild(item);
+
+    wrap.appendChild(bg);
+    wrap.appendChild(inner);
+
+    attachSwipeToDelete(wrap, function() {
+      var idx = NOTIFICATIONS.indexOf(n);
+      if (idx >= 0) NOTIFICATIONS.splice(idx, 1);
+      renderNotifDrawer();
+      renderPill();
+    });
+
+    list.appendChild(wrap);
   });
 }
 
