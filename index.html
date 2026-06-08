@@ -4692,14 +4692,25 @@ function renderAddHashChips(search) {
       + '<button style="padding:6px 12px;border-radius:20px;border:none;background:var(--purple);color:#fff;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0" id="add-hash-create-btn">'
       + (alreadySel ? '✓ Agregado' : '+ Agregar')
       + '</button>';
-    preview.addEventListener('click', function() {
+    function doAddNew() {
       if (_addHashSelected.indexOf(searchNorm) < 0) {
         _addHashSelected.push(searchNorm);
-        document.getElementById('add-hash-search').value = '';
-        renderAddHashChips('');
-        showToast('✅ #' + searchNorm + ' listo para agregar');
       }
-    });
+      document.getElementById('add-hash-search').value = '';
+      renderAddHashChips('');
+      showToast('✅ #' + searchNorm + ' listo para agregar');
+    }
+    // El click en el div Y en el botón hijo ambos disparan doAddNew
+    preview.addEventListener('click', doAddNew);
+    // Evitar que el click en el botón se propague al div (doble disparo)
+    // pero igualmente ejecutar la acción
+    var createBtn = preview.querySelector('#add-hash-create-btn');
+    if (createBtn) {
+      createBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        doAddNew();
+      });
+    }
     container.appendChild(preview);
   }
 
