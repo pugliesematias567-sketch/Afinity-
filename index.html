@@ -15,12 +15,14 @@
 <link rel="apple-touch-startup-image" href="icons/splash-2048.png">
 <meta name="msapplication-TileColor" content="#0a0a0f">
 <script>
-// Desregistrar service workers viejos que bloquean actualizaciones
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(regs) {
-    regs.forEach(function(reg) { reg.unregister(); });
-  });
-}
+// Desregistrar service workers — con try/catch para TrebEdit/content:// context
+try {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      regs.forEach(function(reg) { reg.unregister(); });
+    }).catch(function(){});
+  }
+} catch(e) {}
 </script>
 <style>
 :root {
@@ -161,6 +163,43 @@ body::after {
   width:8px; height:8px; background:var(--red);
   border-radius:50%; border:1.5px solid var(--bg);
 }
+
+/* ─── RECALC OVERLAY ─── */
+#recalc-overlay {
+  position:fixed; inset:0; z-index:999;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(6px);
+  opacity:0; pointer-events:none;
+  transition:opacity .25s;
+}
+#recalc-overlay.visible { opacity:1; pointer-events:all; }
+.recalc-card {
+  background:var(--card); border-radius:20px;
+  padding:28px 32px; text-align:center;
+  min-width:240px; max-width:300px;
+  box-shadow:0 20px 60px rgba(0,0,0,.4);
+  transform:translateY(16px) scale(.96);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+#recalc-overlay.visible .recalc-card { transform:translateY(0) scale(1); }
+.recalc-spinner {
+  width:44px; height:44px; margin:0 auto 16px;
+  border:3px solid rgba(124,92,252,.2);
+  border-top-color:var(--purple);
+  border-radius:50%;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.recalc-title { font-size:15px; font-weight:700; margin-bottom:6px; }
+.recalc-sub { font-size:12px; color:var(--text2); line-height:1.5; }
+.recalc-tags { display:flex; flex-wrap:wrap; gap:5px; justify-content:center; margin-top:12px; }
+.recalc-tag {
+  font-size:11px; padding:3px 8px; border-radius:999px;
+  background:rgba(124,92,252,.12); color:var(--purple2);
+  border:1px solid rgba(124,92,252,.2);
+  animation:tagPop .3s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes tagPop { from { opacity:0; transform:scale(.6); } to { opacity:1; transform:scale(1); } }
 
 /* ─── VIEWS ─── */
 #views { flex:1; overflow:hidden; position:relative; }
@@ -1756,7 +1795,9 @@ body::after {
       })();
       console.log('Firebase listo:', !!window._fbDb);
       // Notificar al resto de la app
-      document.dispatchEvent(new Event('fb-ready'));
+      var _fbEvt = document.createEvent('Event');
+      _fbEvt.initEvent('fb-ready', true, true);
+      document.dispatchEvent(_fbEvt);
     } catch(e) {
       console.error('Firebase error:', e);
     }
@@ -1844,6 +1885,73 @@ window.saveBio           = _stub('saveBio');
 window.openUserProfile   = _stub('openUserProfile');
 window.closeUserProfile  = _stub('closeUserProfile');
 window.upOpenDM          = _stub('upOpenDM');
+</script>
+
+<!-- Polyfills ES5 para compatibilidad Android WebView / TrebEdit -->
+<script type="text/javascript">
+if (!Object.values) {
+  Object.values = function(obj) {
+    var vals = [];
+    for (var k in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, k)) vals.push(obj[k]);
+    }
+    return vals;
+  };
+}
+if (!Object.keys) {
+  Object.keys = function(obj) {
+    var keys = [];
+    for (var k in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, k)) keys.push(k);
+    }
+    return keys;
+  };
+}
+if (!Array.prototype.find) {
+  Array.prototype.find = function(fn) {
+    for (var i = 0; i < this.length; i++) {
+      if (fn(this[i], i, this)) return this[i];
+    }
+    return undefined;
+  };
+}
+if (!Array.prototype.some) {
+  Array.prototype.some = function(fn) {
+    for (var i = 0; i < this.length; i++) {
+      if (fn(this[i], i, this)) return true;
+    }
+    return false;
+  };
+}
+if (!Array.prototype.filter) {
+  Array.prototype.filter = function(fn) {
+    var out = [];
+    for (var i = 0; i < this.length; i++) {
+      if (fn(this[i], i, this)) out.push(this[i]);
+    }
+    return out;
+  };
+}
+if (!Array.prototype.forEach) {
+  Array.prototype.forEach = function(fn) {
+    for (var i = 0; i < this.length; i++) fn(this[i], i, this);
+  };
+}
+if (!Array.prototype.map) {
+  Array.prototype.map = function(fn) {
+    var out = [];
+    for (var i = 0; i < this.length; i++) out.push(fn(this[i], i, this));
+    return out;
+  };
+}
+if (!Array.prototype.reduce) {
+  Array.prototype.reduce = function(fn, init) {
+    var acc = init, i = 0;
+    if (arguments.length < 2) { acc = this[0]; i = 1; }
+    for (; i < this.length; i++) acc = fn(acc, this[i], i, this);
+    return acc;
+  };
+}
 </script>
 
 <!-- ═══════════════════════════════════════════════ TOAST ══ -->
@@ -2614,13 +2722,26 @@ var HASH_CATEGORIES = {
 };
 
 var NETWORK = [
-  { id:'u1', name:'Martina L.', city:'Palermo, Buenos Aires', tags:['rock','guitarra','fotografía','indie','cine'], color:'#7c5cfc', initials:'ML' },
-  { id:'u2', name:'Rodrigo P.', city:'Palermo, Buenos Aires', tags:['fútbol','pádel','gaming','asado','running'], color:'#f97316', initials:'RP' },
-  { id:'u3', name:'Sol V.', city:'Rosario', tags:['yoga','meditación','fotografía','viajes','naturaleza','trekking'], color:'#22c55e', initials:'SV' },
-  { id:'u4', name:'Bruno K.', city:'Córdoba', tags:['programación','IA','gaming','electrónica','startups'], color:'#06b6d4', initials:'BK' },
-  { id:'u5', name:'Valentina R.', city:'Palermo, Buenos Aires', tags:['arte','moda','diseño','fotografía','indie'], color:'#ec4899', initials:'VR' },
-  { id:'u6', name:'Nico T.', city:'San Telmo, Buenos Aires', tags:['jazz','piano','craft beer','filosofía','lectura'], color:'#eab308', initials:'NT' },
-  { id:'u7', name:'Camila F.', city:'Mendoza', tags:['trekking','ski','yoga','naturaleza','fotografía'], color:'#10b981', initials:'CF' },
+  { id:'u1',  name:'Martina L.',   city:'Palermo, Buenos Aires',   tags:['rock','guitarra','fotografía','indie','cine','series'],                           color:'#7c5cfc', initials:'ML' },
+  { id:'u2',  name:'Rodrigo P.',   city:'Palermo, Buenos Aires',   tags:['fútbol','pádel','gaming','asado','running','CrossFit'],                           color:'#f97316', initials:'RP' },
+  { id:'u3',  name:'Sol V.',       city:'Rosario',                 tags:['yoga','meditación','fotografía','viajes','naturaleza','trekking','vegano'],        color:'#22c55e', initials:'SV' },
+  { id:'u4',  name:'Bruno K.',     city:'Córdoba',                 tags:['programación','IA','gaming','electrónica','startups','data science','Linux'],      color:'#06b6d4', initials:'BK' },
+  { id:'u5',  name:'Valentina R.', city:'Palermo, Buenos Aires',   tags:['arte','moda','diseño','fotografía','indie','ilustración','animación'],             color:'#ec4899', initials:'VR' },
+  { id:'u6',  name:'Nico T.',      city:'San Telmo, Buenos Aires', tags:['jazz','piano','craft beer','filosofía','lectura','historia','teatro'],             color:'#eab308', initials:'NT' },
+  { id:'u7',  name:'Camila F.',    city:'Mendoza',                 tags:['trekking','ski','yoga','naturaleza','fotografía','escalada','campamento'],         color:'#10b981', initials:'CF' },
+  { id:'u8',  name:'Lucas M.',     city:'Palermo, Buenos Aires',   tags:['IA','startups','UX','programación','networking','emprendimiento'],                 color:'#8b5cf6', initials:'LM' },
+  { id:'u9',  name:'Agustina B.',  city:'Belgrano, Buenos Aires',  tags:['lectura','filosofía','stand-up','series','manga','cultura','teatro'],              color:'#f43f5e', initials:'AB' },
+  { id:'u10', name:'Tomás H.',     city:'La Plata',                tags:['metal','guitarra','rock','batería','vinilo','indie','folklore'],                   color:'#0ea5e9', initials:'TH' },
+  { id:'u11', name:'Pilar G.',     city:'Rosario',                 tags:['repostería','cocina','café','vegano','gastronomía','viajes','fotografía'],         color:'#d946ef', initials:'PG' },
+  { id:'u12', name:'Mateo R.',     city:'Córdoba',                 tags:['gaming','FPS','RPG','esports','streaming','animación','manga'],                    color:'#14b8a6', initials:'MR' },
+  { id:'u13', name:'Julieta W.',   city:'San Telmo, Buenos Aires', tags:['arte','pintura','ilustración','moda','fotografía','tattoo','diseño'],              color:'#fb923c', initials:'JW' },
+  { id:'u14', name:'Facundo O.',   city:'Palermo, Buenos Aires',   tags:['running','ciclismo','CrossFit','trekking','natación','ski','deporte'],              color:'#34d399', initials:'FO' },
+  { id:'u15', name:'Sofía E.',     city:'Mendoza',                 tags:['astronomía','naturaleza','fotografía','viajes','ciencia','lectura','mochilero'],   color:'#a78bfa', initials:'SE' },
+  { id:'u16', name:'Ignacio P.',   city:'Belgrano, Buenos Aires',  tags:['jazz','filosofía','craft beer','asado','historia','lectura','after'],              color:'#fbbf24', initials:'IP' },
+  { id:'u17', name:'Carolina V.',  city:'Rosario',                 tags:['yoga','meditación','voluntariado','activismo','bienestar','gatos','adopción'],     color:'#4ade80', initials:'CV' },
+  { id:'u18', name:'Sebastián L.', city:'Córdoba',                 tags:['blockchain','startups','IA','programación','data science','nomade digital'],       color:'#38bdf8', initials:'SL' },
+  { id:'u19', name:'Luciana F.',   city:'Palermo, Buenos Aires',   tags:['cine','series','stand-up','filosofía','manga','indie','cultura'],                  color:'#f472b6', initials:'LF' },
+  { id:'u20', name:'Diego C.',     city:'La Plata',                tags:['fútbol','running','asado','after','networking','emprendimiento','perros'],          color:'#fb7185', initials:'DC' },
 ];
 
 var CURATED_GROUPS = [
@@ -3708,6 +3829,7 @@ function attachSwipeToDelete(wrap, onDelete) {
     dragging = false;
     if (curX < -THRESHOLD) {
       locked = true;
+      SFX.play('swipe');
       wrap.classList.add('deleting');
       wrap.style.maxHeight = wrap.offsetHeight + 'px';
       // Force reflow so transition fires
@@ -3870,6 +3992,7 @@ function openGroupChat(chatId, name, icon) {
 }
 
 function openDM(userId) {
+  SFX.play('match');
   var u = NETWORK.find(function(u){ return u.id === userId; });
   if (!u) return;
   var chatId = 'chat-'+userId;
@@ -4174,11 +4297,12 @@ function sendMessage() {
   var msg = { id:msgId, sender: MY_UID || 'me', text:text, ts:Date.now() };
   if (replyingTo) { msg.replyTo = replyingTo.id; replyingTo = null; input.placeholder = 'Escribí algo...'; }
 
-  if (!chatHistory[activeChatId]) chatHistory[activeChatId] = [...chat.msgs];
+  if (!chatHistory[activeChatId]) chatHistory[activeChatId] = chat.msgs.slice();
   chatHistory[activeChatId].push(msg);
   saveToStorage();
   earnSparks('msg-'+msgId, 2);
   fbSendMessage(activeChatId, msg);
+  SFX.play('send');
   renderMessages();
   input.value = '';
   autoResizeInput(input);
@@ -4195,6 +4319,7 @@ function sendMessage() {
       var respMsg = { id:'m'+Date.now(), sender:chat.userId, text:responses[Math.floor(Math.random()*responses.length)], ts:Date.now() };
       chatHistory[activeChatId].push(respMsg);
       saveToStorage();
+      SFX.play('receive');
       renderMessages();
     }, 1500+Math.random()*1000);
   }
@@ -4328,7 +4453,7 @@ function confirmEvent() {
   var msg = { id:'m'+Date.now(), sender:'me', text:'', ts:Date.now(), eventData:ev };
   if (!chatHistory[activeChatId]) {
     var chat = INITIAL_CHATS.find(function(c){ return c.id === activeChatId; });
-    chatHistory[activeChatId] = [...(chat?chat.msgs:[])];
+    chatHistory[activeChatId] = (chat ? chat.msgs.slice() : []);
   }
   chatHistory[activeChatId].push(msg);
   saveToStorage();
@@ -4698,7 +4823,7 @@ function renderAddHashChips(search) {
       }
       document.getElementById('add-hash-search').value = '';
       renderAddHashChips('');
-      showToast('✅ #' + searchNorm + ' listo para agregar');
+      SFX.play('hashtag'); showToast('✅ #' + searchNorm + ' listo para agregar');
     }
     // El click en el div Y en el botón hijo ambos disparan doAddNew
     preview.addEventListener('click', doAddNew);
@@ -4732,19 +4857,50 @@ function renderAddHashChips(search) {
   }
 }
 
+function showRecalcOverlay(newTags, onDone) {
+  var overlay = document.getElementById('recalc-overlay');
+  var tagsEl  = document.getElementById('recalc-tags');
+  if (!overlay) { onDone(); return; }
+
+  // Show tags with staggered animation
+  tagsEl.innerHTML = '';
+  (newTags || []).slice(0, 6).forEach(function(tag, i) {
+    var span = document.createElement('span');
+    span.className = 'recalc-tag';
+    span.textContent = '#' + tag;
+    span.style.animationDelay = (i * 80) + 'ms';
+    tagsEl.appendChild(span);
+  });
+
+  overlay.classList.add('visible');
+
+  // Run recalc after a beat so the animation is visible
+  setTimeout(function() {
+    onDone();
+    setTimeout(function() {
+      overlay.classList.remove('visible');
+    }, 600);
+  }, 1400);
+}
+
 function confirmAddHashtags() {
   if (!_addHashSelected.length) {
     closeAddHashModal({target: document.getElementById('add-hash-overlay')});
     return;
   }
-  _addHashSelected.forEach(function(tag){ myHashtags[tag] = 3; });
+  var tagsToAdd = _addHashSelected.slice();
+  tagsToAdd.forEach(function(tag){ myHashtags[tag] = 3; });
   saveToStorage();
   closeAddHashModal({target: document.getElementById('add-hash-overlay')});
-  renderProfile();
-  renderDiscover();
-  renderCuratedGroups();
-  showToast('✅ ' + _addHashSelected.length + ' hashtag' + (_addHashSelected.length > 1 ? 's' : '') + ' agregado' + (_addHashSelected.length > 1 ? 's' : ''));
   _addHashSelected = [];
+  renderProfile();
+  // Mostrar overlay de recálculo y luego actualizar vistas
+  showRecalcOverlay(tagsToAdd, function() {
+    renderDiscover();
+    renderCuratedGroups();
+  });
+  SFX.play('hashtag');
+  showToast('✅ ' + tagsToAdd.length + ' hashtag' + (tagsToAdd.length > 1 ? 's' : '') + ' agregado' + (tagsToAdd.length > 1 ? 's' : ''));
 }
 window.confirmAddHashtags = confirmAddHashtags;
 
@@ -4752,8 +4908,10 @@ function removeHashtag(tag) {
   delete myHashtags[tag];
   saveToStorage();
   renderProfile();
-  renderDiscover();
-  renderCuratedGroups();
+  showRecalcOverlay([tag], function() {
+    renderDiscover();
+    renderCuratedGroups();
+  });
 }
 
 function editDisplayName() {
@@ -4792,6 +4950,7 @@ function earnSparks(key, amount) {
   sparks += amount;
   saveToStorage();
   renderPill();
+  SFX.play('sparks');
   showToast('⚡ +' + amount + ' chispas ganadas!');
   maybeShowTip('tip-chispas');
   if (currentView === 'perfil') renderProfile();
@@ -4799,7 +4958,7 @@ function earnSparks(key, amount) {
 
 function spendSparks(action) {
   var cost = action === 'highlight' ? 50 : 40;
-  if (sparks < cost) { showToast('⚡ No tenés suficientes chispas'); return; }
+  if (sparks < cost) { SFX.play('error'); showToast('⚡ No tenés suficientes chispas'); return; }
   sparks -= cost;
   saveToStorage();
   renderPill();
@@ -5201,40 +5360,23 @@ function closeGifPicker(e){
   document.getElementById('gif-picker-overlay').classList.remove('open');
 }
 
-async function loadTrendingGifs(){
-  try {
-    var res = await fetch(
-      'https://api.giphy.com/v1/gifs/trending?api_key=' + GIPHY_API_KEY + '&limit=20&rating=pg'
-    );
-
-    var data = await res.json();
-    renderGifGrid(data.data || []);
-  } catch(err) {
-    console.error('Giphy trending error:', err);
-  }
+function loadTrendingGifs(){
+  fetch('https://api.giphy.com/v1/gifs/trending?api_key=' + GIPHY_API_KEY + '&limit=20&rating=pg')
+    .then(function(res){ return res.json(); })
+    .then(function(data){ renderGifGrid(data.data || []); })
+    .catch(function(err){ console.error('Giphy trending error:', err); });
 }
 
 function searchGifs(query){
   clearTimeout(gifSearchTimeout);
 
-  gifSearchTimeout = setTimeout(async function(){
-    try {
-      if(!query.trim()) {
-        loadTrendingGifs();
-        return;
-      }
-
-      var res = await fetch(
-        'https://api.giphy.com/v1/gifs/search?api_key='
-        + GIPHY_API_KEY +
-        '&limit=20&rating=pg&q=' + encodeURIComponent(query)
-      );
-
-      var data = await res.json();
-      renderGifGrid(data.data || []);
-    } catch(err) {
-      console.error('Giphy search error:', err);
-    }
+  gifSearchTimeout = setTimeout(function(){
+    if(!query.trim()) { loadTrendingGifs(); return; }
+    fetch('https://api.giphy.com/v1/gifs/search?api_key='
+      + GIPHY_API_KEY + '&limit=20&rating=pg&q=' + encodeURIComponent(query))
+      .then(function(res){ return res.json(); })
+      .then(function(data){ renderGifGrid(data.data || []); })
+      .catch(function(err){ console.error('Giphy search error:', err); });
   }, 250);
 }
 
@@ -5277,7 +5419,7 @@ function sendGifMessage(url){
   };
 
   if (!chatHistory[activeChatId]) {
-    chatHistory[activeChatId] = [...chat.msgs];
+    chatHistory[activeChatId] = chat.msgs.slice();
   }
 
   chatHistory[activeChatId].push(msg);
@@ -5295,5 +5437,151 @@ function sendGifMessage(url){
 }
 
 </script>
+<div id="recalc-overlay">
+  <div class="recalc-card">
+    <div class="recalc-spinner"></div>
+    <div class="recalc-title">Recalculando afinidad ✨</div>
+    <div class="recalc-sub">Buscando personas con intereses en común...</div>
+    <div class="recalc-tags" id="recalc-tags"></div>
+  </div>
+</div>
+
+
+<script type="text/javascript">
+/* ═══════════════════════════════════════════════════════
+   MÓDULO: Sound Engine — Web Audio API
+   Sin archivos externos. Funciona offline. ES5 puro.
+   Uso: SFX.play('send') / SFX.play('receive') / etc.
+   ═══════════════════════════════════════════════════════ */
+var SFX = (function() {
+  var ctx = null;
+  var muted = false;
+
+  function getCtx() {
+    if (!ctx) {
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch(e) { return null; }
+    }
+    // Resume if suspended (autoplay policy)
+    if (ctx.state === 'suspended') {
+      try { ctx.resume(); } catch(e) {}
+    }
+    return ctx;
+  }
+
+  // Master: oscilador + envelope de amplitud
+  function tone(freq, type, startTime, duration, gainStart, gainEnd, c) {
+    try {
+      var osc = c.createOscillator();
+      var gain = c.createGain();
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(gainStart, startTime);
+      gain.gain.exponentialRampToValueAtTime(Math.max(gainEnd, 0.0001), startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration + 0.01);
+    } catch(e) {}
+  }
+
+  function noise(duration, gainVal, startTime, c) {
+    try {
+      var bufSize = c.sampleRate * duration;
+      var buf = c.createBuffer(1, bufSize, c.sampleRate);
+      var data = buf.getChannelData(0);
+      for (var i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+      var src = c.createBufferSource();
+      src.buffer = buf;
+      var gain = c.createGain();
+      src.connect(gain);
+      gain.connect(c.destination);
+      gain.gain.setValueAtTime(gainVal, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+      src.start(startTime);
+    } catch(e) {}
+  }
+
+  var sounds = {
+    // Enviar mensaje: pop corto y seco
+    send: function(c) {
+      var t = c.currentTime;
+      tone(520, 'sine',     t,      0.06, 0.3, 0.001, c);
+      tone(780, 'sine',     t+0.03, 0.05, 0.15, 0.001, c);
+    },
+    // Recibir mensaje: ding suave descendente
+    receive: function(c) {
+      var t = c.currentTime;
+      tone(880, 'sine', t,      0.12, 0.25, 0.001, c);
+      tone(660, 'sine', t+0.08, 0.15, 0.15, 0.001, c);
+    },
+    // Match / Conectar: chime ascendente eufórico
+    match: function(c) {
+      var t = c.currentTime;
+      var notes = [523, 659, 784, 1047];
+      notes.forEach(function(f, i) {
+        tone(f, 'sine', t + i*0.1, 0.25, 0.28, 0.001, c);
+      });
+    },
+    // Agregar hashtag: click satisfactorio
+    hashtag: function(c) {
+      var t = c.currentTime;
+      tone(440, 'square', t,      0.04, 0.12, 0.001, c);
+      tone(660, 'sine',   t+0.04, 0.08, 0.18, 0.001, c);
+    },
+    // Sparks ganados: sonido de moneda
+    sparks: function(c) {
+      var t = c.currentTime;
+      tone(1200, 'sine', t,      0.06, 0.2,  0.001, c);
+      tone(1600, 'sine', t+0.05, 0.08, 0.25, 0.001, c);
+      tone(1200, 'sine', t+0.10, 0.10, 0.15, 0.001, c);
+    },
+    // Swipe delete: whoosh
+    swipe: function(c) {
+      var t = c.currentTime;
+      var osc = c.createOscillator();
+      var gain = c.createGain();
+      osc.connect(gain); gain.connect(c.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, t);
+      osc.frequency.exponentialRampToValueAtTime(80, t + 0.18);
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      osc.start(t); osc.stop(t + 0.2);
+      noise(0.15, 0.08, t, c);
+    },
+    // Error / acción bloqueada
+    error: function(c) {
+      var t = c.currentTime;
+      tone(220, 'square', t,      0.08, 0.15, 0.001, c);
+      tone(180, 'square', t+0.1,  0.10, 0.12, 0.001, c);
+    },
+  };
+
+  // Desbloquear AudioContext en primer toque (iOS / Android policy)
+  function unlock() {
+    getCtx();
+    document.removeEventListener('touchstart', unlock);
+    document.removeEventListener('click', unlock);
+  }
+  document.addEventListener('touchstart', unlock, {passive: true});
+  document.addEventListener('click', unlock, {passive: true});
+
+  return {
+    play: function(name) {
+      if (muted) return;
+      var c = getCtx();
+      if (!c) return;
+      if (sounds[name]) sounds[name](c);
+    },
+    mute:   function() { muted = true; },
+    unmute: function() { muted = false; },
+    toggle: function() { muted = !muted; return muted; },
+    isMuted: function() { return muted; }
+  };
+})();
+</script>
+
 </body>
 </html>
