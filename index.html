@@ -2889,6 +2889,13 @@ function init() {
   renderHashCategories();
   renderHashChips();
   updateObNextBtn();
+  // Diagnóstico de arranque — siempre visible
+  setTimeout(function() {
+    var uid = MY_UID || localStorage.getItem("afinity_uid") || null;
+    var fbOk = (typeof firebase !== "undefined" && typeof firebase.database !== "undefined");
+    var msg = "App OK | Firebase:" + (fbOk ? "✓" : "✗") + " | UID:" + (uid ? uid.substring(0,8)+"..." : "null");
+    showToast(msg);
+  }, 800);
 
   var today = new Date();
   var iso = today.toISOString().split('T')[0];
@@ -5267,6 +5274,11 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     if (_fbDb) return; // ya inicializado
     fbInit();
     MY_UID = fbGetUserId();
+    // Toast temporal de diagnóstico — muestra UID en pantalla
+    setTimeout(function() {
+      var uid = MY_UID || localStorage.getItem('afinity_uid') || 'null';
+      showToast(uid !== 'null' ? '🔑 UID: ' + uid.substring(0,10) + '...' : '⚠️ Sin UID — modo demo');
+    }, 1500);
   }
   // Intentar inmediatamente
   tryFbInit();
