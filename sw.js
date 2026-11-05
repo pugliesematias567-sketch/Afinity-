@@ -1,4 +1,4 @@
-const CACHE = 'afinity-v1';
+const CACHE = 'afinity-v2';
 const SHELL = [
   '/',
   '/index.html',
@@ -34,6 +34,24 @@ self.addEventListener('fetch', function(e) {
   var url = new URL(e.request.url);
   if (url.origin !== location.origin) return;
 
+  // Nunca tocar el handler de Firebase Auth (/__/auth/*, /__/firebase/*)
+  if (url.pathname.indexOf('/__/') === 0) return;
+
+  // Paginas (HTML): red primero, cache solo si no hay conexion
+  if (e.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    e.respondWith(
+      fetch(e.request).then(function(res) {
+        if (res && res.status === 200) {
+          var clone = res.clone();
+          caches.open(CACHE).then(function(cache) { cache.put(e.request, clone); });
+        }
+        return res;
+      }).catch(function() { return caches.match(e.request).then(function(c) { return c || caches.match('/index.html'); }); })
+    );
+    return;
+  }
+
+  // Resto (iconos, manifest, etc.): stale-while-revalidate
   e.respondWith(
     caches.match(e.request).then(function(cached) {
       var network = fetch(e.request).then(function(res) {
@@ -43,7 +61,6 @@ self.addEventListener('fetch', function(e) {
         }
         return res;
       }).catch(function() { return cached; });
-      // Stale-while-revalidate: responde con cache si hay, actualiza en background
       return cached || network;
     })
   );
